@@ -47,8 +47,6 @@ export default function RootLayout() {
           <Stack.Screen name="home" />
           <Stack.Screen name="skin-check" />
           <Stack.Screen name="skin-results" />
-          <Stack.Screen name="action-plan" />
-          <Stack.Screen name="saved-scan" />
           <Stack.Screen name="scan-products" />
           <Stack.Screen name="routine-results" />
           <Stack.Screen name="products" />
