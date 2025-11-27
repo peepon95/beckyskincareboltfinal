@@ -1,10 +1,22 @@
-const OPENROUTER_API_KEY = process.env.EXPO_PUBLIC_OPENROUTER_API_KEY;
+// Get API key from environment - try multiple sources for compatibility
+const OPENROUTER_API_KEY =
+  process.env.EXPO_PUBLIC_OPENROUTER_API_KEY ||
+  (typeof window !== 'undefined' && window._env_?.EXPO_PUBLIC_OPENROUTER_API_KEY);
+
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const SKIN_ANALYSIS_MODEL = 'google/gemini-2.5-flash';
 const PRODUCT_ANALYSIS_MODEL = 'google/gemini-2.5-flash';
 
-if (!OPENROUTER_API_KEY) {
-  console.error('❌ OpenRouter API key is missing!');
+// Log API key status on module load
+console.log('🔑 API Key Check:');
+console.log('  - Available:', OPENROUTER_API_KEY ? 'YES' : 'NO');
+console.log('  - Length:', OPENROUTER_API_KEY?.length || 0);
+console.log('  - Starts with sk-or:', OPENROUTER_API_KEY?.startsWith('sk-or') ? 'YES' : 'NO');
+console.log('  - process.env keys:', Object.keys(process.env).filter(k => k.includes('OPENROUTER')));
+
+if (!OPENROUTER_API_KEY || OPENROUTER_API_KEY === 'your_openrouter_api_key_here') {
+  console.error('❌ OpenRouter API key is missing or invalid!');
+  console.error('❌ Set EXPO_PUBLIC_OPENROUTER_API_KEY in your .env file');
 }
 
 function stripMarkdown(text) {
@@ -24,8 +36,19 @@ export function fileToBase64(file) {
 }
 
 async function callOpenRouter(prompt, imageBase64, model) {
+  // Check API key
   if (!OPENROUTER_API_KEY || OPENROUTER_API_KEY === 'your_openrouter_api_key_here') {
-    throw new Error('Please add your OpenRouter API key to the .env file');
+    console.error('❌ OpenRouter API key is missing or invalid');
+    throw new Error('API configuration error. Please contact support.');
+  }
+
+  // Validate inputs
+  if (!imageBase64) {
+    throw new Error('No image provided');
+  }
+
+  if (!prompt) {
+    throw new Error('No analysis prompt provided');
   }
 
   const messages = [
@@ -48,34 +71,68 @@ async function callOpenRouter(prompt, imageBase64, model) {
 
   console.log('📡 Calling OpenRouter API');
   console.log('🔑 OpenRouter endpoint:', OPENROUTER_API_URL);
+  console.log('🔑 API Key present:', OPENROUTER_API_KEY ? 'YES' : 'NO');
+  console.log('📊 Model:', model);
 
-  const response = await fetch(OPENROUTER_API_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://skincare-app.local',
-      'X-Title': 'Skincare Analysis App'
-    },
-    body: JSON.stringify({
-      model: model,
-      messages: messages,
-      temperature: 0.7,
-      max_tokens: 8000
-    })
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    console.error('OpenRouter API error:', errorData);
-    throw new Error(errorData.error?.message || `API error: ${response.status}`);
+  let response;
+  try {
+    response = await fetch(OPENROUTER_API_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://skincare-app.local',
+        'X-Title': 'Becky Skincare App'
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: messages,
+        temperature: 0.7,
+        max_tokens: 8000
+      })
+    });
+  } catch (networkError) {
+    console.error('❌ Network error:', networkError);
+    throw new Error('Network connection failed. Please check your internet connection and try again.');
   }
 
-  const data = await response.json();
+  if (!response.ok) {
+    let errorData;
+    try {
+      errorData = await response.json();
+    } catch (e) {
+      errorData = {};
+    }
+
+    console.error('❌ OpenRouter API error:', response.status, errorData);
+
+    // Handle specific error codes
+    if (response.status === 401) {
+      throw new Error('API authentication failed. Please contact support.');
+    } else if (response.status === 429) {
+      throw new Error('Rate limit exceeded. Please wait a moment and try again.');
+    } else if (response.status === 503) {
+      throw new Error('Service temporarily unavailable. Please try again in a moment.');
+    } else if (response.status >= 500) {
+      throw new Error('Server error. Please try again later.');
+    }
+
+    throw new Error(errorData.error?.message || `API error (${response.status}). Please try again.`);
+  }
+
+  let data;
+  try {
+    data = await response.json();
+  } catch (jsonError) {
+    console.error('❌ Failed to parse API response:', jsonError);
+    throw new Error('Invalid response from server. Please try again.');
+  }
+
   console.log('✅ OpenRouter API response received');
 
   if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-    throw new Error('Invalid API response format');
+    console.error('❌ Invalid API response structure:', data);
+    throw new Error('Unexpected response format. Please try again.');
   }
 
   return data.choices[0].message.content;
@@ -205,14 +262,25 @@ export async function analyzeSkin(imageBase64) {
     console.log('📊 Using model:', SKIN_ANALYSIS_MODEL);
     console.log('🔑 OpenRouter endpoint:', OPENROUTER_API_URL);
     console.log('API Key available:', OPENROUTER_API_KEY ? 'YES' : 'NO');
+    console.log('API Key length:', OPENROUTER_API_KEY?.length || 0);
     console.log('Image data length:', imageBase64?.length || 0);
 
+    // Validate API key
     if (!OPENROUTER_API_KEY || OPENROUTER_API_KEY === 'your_openrouter_api_key_here') {
-      throw new Error('OpenRouter API key is missing');
+      console.error('❌ OpenRouter API key is missing or invalid');
+      throw new Error("Becky couldn't analyse your skin right now. Please contact support.");
     }
 
+    // Validate image data
     if (!imageBase64) {
-      throw new Error('No image data provided');
+      console.error('❌ No image data provided');
+      throw new Error('No image provided. Please take a photo first.');
+    }
+
+    // Validate image format
+    if (!imageBase64.startsWith('data:image/')) {
+      console.error('❌ Invalid image format');
+      throw new Error('Invalid image format. Please try taking the photo again.');
     }
 
     const prompt = `You are an AI assistant that visually analyzes skin photos.
@@ -333,7 +401,15 @@ CRITICAL RULES:
   } catch (error) {
     console.error("❌ Skin analysis error:", error);
     console.error('Error details:', error.message);
-    throw error;
+    console.error('Error stack:', error.stack);
+
+    // Ensure we throw a user-friendly error message
+    if (error.message && error.message.includes("Becky couldn't")) {
+      throw error;
+    }
+
+    // Convert technical errors to user-friendly messages
+    throw new Error("Becky couldn't analyse your skin right now. Please check your connection and try again.");
   }
 }
 

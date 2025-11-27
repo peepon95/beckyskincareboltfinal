@@ -44,15 +44,48 @@ export default function FinalOnboarding() {
 
     } catch (error: any) {
       console.error('❌ Analysis error:', error);
+      console.error('Error type:', typeof error);
+      console.error('Error message:', error?.message);
+      console.error('Error stack:', error?.stack);
+
+      // Always stop loading state
       setIsAnalyzing(false);
 
-      let errorMessage = error.message || 'Please try again';
+      // Determine user-friendly error message
+      let errorMessage = "Becky couldn't analyse your skin right now. Please check your connection and try again.";
 
-      if (errorMessage.includes('quota') || errorMessage.includes('429')) {
-        errorMessage = 'API quota exceeded. Please wait 1 minute and try again.';
+      if (error?.message) {
+        // Use the error message if it's already user-friendly
+        if (error.message.includes("Becky couldn't") ||
+            error.message.includes('Please') ||
+            error.message.includes('try again')) {
+          errorMessage = error.message;
+        } else if (error.message.includes('quota') || error.message.includes('429') || error.message.includes('Rate limit')) {
+          errorMessage = 'Rate limit exceeded. Please wait a moment and try again.';
+        } else if (error.message.includes('network') || error.message.includes('Network') || error.message.includes('fetch')) {
+          errorMessage = 'Network error. Please check your internet connection and try again.';
+        } else if (error.message.includes('API key') || error.message.includes('authentication')) {
+          errorMessage = 'Service configuration error. Please contact support.';
+        }
       }
 
-      Alert.alert('Analysis Failed', errorMessage);
+      // Show error alert
+      Alert.alert(
+        'Analysis Failed',
+        errorMessage,
+        [
+          {
+            text: 'Try Again',
+            onPress: () => handleStartAnalysis(),
+            style: 'default'
+          },
+          {
+            text: 'Go Back',
+            onPress: () => router.back(),
+            style: 'cancel'
+          }
+        ]
+      );
     }
   };
 
